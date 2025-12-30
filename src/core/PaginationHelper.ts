@@ -24,26 +24,47 @@ export class PaginationHelper {
   }
 
   /**
+   * Safely parse integer from query param
+   */
+  private safeParseInt(value: unknown, fallback: number, max: number): number {
+    if (typeof value !== 'string') return fallback;
+    const num = parseInt(value, 10);
+    if (!Number.isFinite(num) || Number.isNaN(num)) return fallback;
+    return Math.min(max, Math.max(1, num));
+  }
+
+  /**
    * Extract pagination parameters from request
    */
   extractFromRequest(req: Request): { page: number; limit: number } {
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const page = this.safeParseInt(req.query.page, 1, 1000000);
     const limit = Math.min(
       this.config.maxLimit,
-      Math.max(1, parseInt(req.query.limit as string, 10) || this.config.defaultLimit)
+      this.safeParseInt(req.query.limit, this.config.defaultLimit, this.config.maxLimit)
     );
 
     return { page, limit };
   }
 
   /**
+   * Validate cursor format (base64 or alphanumeric, max 512 chars)
+   */
+  private validateCursor(cursor: unknown): string | undefined {
+    if (typeof cursor !== 'string' || cursor.length === 0) return undefined;
+    if (cursor.length > 512) return undefined;
+    // Allow base64 and alphanumeric cursors only
+    if (!/^[a-zA-Z0-9+/=_-]+$/.test(cursor)) return undefined;
+    return cursor;
+  }
+
+  /**
    * Extract cursor pagination parameters from request
    */
   extractCursorFromRequest(req: Request): { cursor?: string; limit: number } {
-    const cursor = req.query.cursor as string | undefined;
+    const cursor = this.validateCursor(req.query.cursor);
     const limit = Math.min(
       this.config.maxLimit,
-      Math.max(1, parseInt(req.query.limit as string, 10) || this.config.defaultLimit)
+      this.safeParseInt(req.query.limit, this.config.defaultLimit, this.config.maxLimit)
     );
 
     return { cursor, limit };

@@ -1,6 +1,6 @@
 {
   "name": "apienvelope",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Production-grade npm package for standardized API response formatting in Express applications",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -12,11 +12,12 @@
       "require": "./dist/index.js"
     }
   },
+  "sideEffects": false,
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "build": "tsup && rm -f dist/*.d.mts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

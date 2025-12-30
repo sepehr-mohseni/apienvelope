@@ -22,20 +22,27 @@ const defaultOptions: SerializationOptions = {
 };
 
 /**
- * Mask sensitive data in an object
+ * Mask sensitive data in an object with prototype pollution protection
  */
 function maskSensitiveFields(
   obj: Record<string, unknown>,
-  sensitiveFields: string[]
+  sensitiveFields: string[],
+  depth = 0
 ): Record<string, unknown> {
-  const masked: Record<string, unknown> = {};
+  // Prevent deep recursion attacks
+  if (depth > 10) return { _truncated: true };
+  
+  const masked: Record<string, unknown> = Object.create(null);
   const lowerSensitiveFields = sensitiveFields.map((f) => f.toLowerCase());
 
   for (const [key, value] of Object.entries(obj)) {
+    // Skip prototype pollution vectors
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    
     if (lowerSensitiveFields.includes(key.toLowerCase())) {
       masked[key] = '[REDACTED]';
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-      masked[key] = maskSensitiveFields(value as Record<string, unknown>, sensitiveFields);
+      masked[key] = maskSensitiveFields(value as Record<string, unknown>, sensitiveFields, depth + 1);
     } else {
       masked[key] = value;
     }
@@ -45,20 +52,27 @@ function maskSensitiveFields(
 }
 
 /**
- * Safely serialize error details handling circular references
+ * Safely serialize error details handling circular references and depth limits
  */
 function safeSerializeDetails(
   details: Record<string, unknown>,
-  seen = new WeakSet<object>()
+  seen = new WeakSet<object>(),
+  depth = 0
 ): Record<string, unknown> {
+  // Prevent deep recursion attacks
+  if (depth > 10) return { _truncated: true };
+  
   if (seen.has(details)) {
     return { _circular: true };
   }
   seen.add(details);
 
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = Object.create(null);
 
   for (const [key, value] of Object.entries(details)) {
+    // Skip prototype pollution vectors
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    
     if (value === null || value === undefined) {
       result[key] = value;
     } else if (typeof value === 'object') {
@@ -68,13 +82,13 @@ function safeSerializeDetails(
           message: value.message,
         };
       } else if (Array.isArray(value)) {
-        result[key] = value.map((item) =>
+        result[key] = value.slice(0, 100).map((item) =>
           typeof item === 'object' && item !== null
-            ? safeSerializeDetails(item as Record<string, unknown>, seen)
+            ? safeSerializeDetails(item as Record<string, unknown>, seen, depth + 1)
             : item
         );
       } else {
-        result[key] = safeSerializeDetails(value as Record<string, unknown>, seen);
+        result[key] = safeSerializeDetails(value as Record<string, unknown>, seen, depth + 1);
       }
     } else {
       result[key] = value;
@@ -117,7 +131,8 @@ export function serializeError(
     if (details && opts.maskSensitiveData) {
       details = maskSensitiveFields(
         safeSerializeDetails(details),
-        opts.sensitiveFields
+        opts.sensitiveFields,
+        0
       ) as Record<string, unknown>;
     }
 

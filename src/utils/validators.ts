@@ -22,18 +22,27 @@ export interface CursorPaginationInput {
 }
 
 /**
+ * Safe integer parsing with bounds
+ */
+function safeParseInt(value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) return fallback;
+  return Math.min(max, Math.max(0, Math.floor(num)));
+}
+
+/**
  * Validate and normalize pagination input
  */
 export function validatePaginationInput(
   input: Partial<PaginationInput>,
   config: PaginationConfig
 ): PaginationInput {
-  const page = Math.max(1, Math.floor(Number(input.page) || 1));
+  const page = Math.max(1, safeParseInt(input.page, 1, 1000000));
   const limit = Math.min(
     config.maxLimit,
-    Math.max(1, Math.floor(Number(input.limit) || config.defaultLimit))
+    Math.max(1, safeParseInt(input.limit, config.defaultLimit, config.maxLimit))
   );
-  const total = Math.max(0, Math.floor(Number(input.total) || 0));
+  const total = safeParseInt(input.total, 0, Number.MAX_SAFE_INTEGER);
 
   return { page, limit, total };
 }
@@ -202,10 +211,20 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 /**
- * Generate a unique request ID
+ * Generate a unique request ID (crypto-secure when available)
  */
 export function generateRequestId(): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 10);
+  let random: string;
+  
+  // Use crypto for secure random when available
+  if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
+    const bytes = new Uint8Array(6);
+    globalThis.crypto.getRandomValues(bytes);
+    random = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  } else {
+    random = Math.random().toString(36).substring(2, 10);
+  }
+  
   return `${timestamp}-${random}`;
 }
